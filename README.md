@@ -1,1 +1,71 @@
-# project-theta
+# Project Theta
+
+An intelligent study assistant that helps students learn from their course materials through AI-powered analysis and interaction.
+
+## Features (MVP)
+
+- Upload and parse lecture slides (PDF)
+- Transcribe audio lectures
+- Extract and store text content
+- (Coming soon) Chat with course-specific AI agent
+- (Coming soon) Generate summaries and flashcards
+
+## Prerequisites
+
+- Python 3.11 (required for package compatibility)
+- Homebrew (for macOS)
+- Xcode Command Line Tools
+
+## Setup
+
+1. Install Python 3.11:
+```bash
+# On macOS with Homebrew
+brew install python@3.11
+```
+
+2. Clone the repository:
+```bash
+git clone https://github.com/yourusername/project-theta.git
+cd project-theta
+```
+
+3. Create and activate a virtual environment:
+```bash
+# Create virtual environment with Python 3.11
+python3.11 -m venv .venv
+
+# Activate the virtual environment
+source .venv/bin/activate  # On Unix/macOS
+# or
+.venv\Scripts\activate  # On Windows
+```
+
+4. Install build dependencies (macOS):
+```bash
+# Install Homebrew if you haven't already
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install required build tools
+brew install cmake pkg-config
+```
+
+5. Install Python dependencies:
+```bash
+# Upgrade pip and install build tools
+pip3 install --upgrade pip setuptools wheel
+
+# Install project dependencies
+pip3 install -r requirements.txt
+```
+
+6. Set up environment variables:
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env with your configuration
+# (Add your API keys and other settings)
+```
+
+## Project Structure
