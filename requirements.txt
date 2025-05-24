@@ -1,5 +1,5 @@
 # Core dependencies
-PyMuPDF==1.22.5
+PyMuPDF==1.23.8
 openai-whisper==20231117
 python-dotenv==1.0.0
 
