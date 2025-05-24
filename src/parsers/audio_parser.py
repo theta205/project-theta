@@ -32,11 +32,29 @@ class AudioParser:
         try:
             result = self.model.transcribe(str(file_path))
             
+            # Clean up segments and filter out high no_speech_prob segments
+            clean_segments = []
+            filtered_text = []
+            
+            for segment in result.get("segments", []):
+                # Only include segments with no_speech_prob < 0.95
+                if segment["no_speech_prob"] < 0.95:
+                    clean_segments.append({
+                        "start": segment["start"],
+                        "end": segment["end"],
+                        "text": segment["text"].strip(),
+                        "avg_logprob": segment["avg_logprob"],
+                        "no_speech_prob": segment["no_speech_prob"]
+                    })
+                    filtered_text.append(segment["text"].strip())
+            
             return {
-                "text": result["text"],
+                "text": " ".join(filtered_text),  # Reconstruct text from filtered segments
                 "filename": file_path.name,
                 "file_type": "audio",
-                "language": result.get("language", "unknown")
+                "language": result.get("language", "unknown"),
+                "segments": clean_segments,
+                "duration": result.get("duration", 0)
             }
             
         except Exception as e:
