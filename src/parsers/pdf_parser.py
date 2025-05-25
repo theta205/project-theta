@@ -1,6 +1,8 @@
-import pymupdf  # Updated import
+import pymupdf
 from pathlib import Path
 from typing import Dict, Optional
+import json
+import sys
 
 class PDFParser:
     def __init__(self):
@@ -23,7 +25,7 @@ class PDFParser:
             raise ValueError(f"Unsupported file type: {file_path.suffix}")
             
         try:
-            doc = pymupdf.open(file_path)  # Updated to use pymupdf.open
+            doc = pymupdf.open(file_path)
             text_content = []
             
             for page_num, page in enumerate(doc):
@@ -38,4 +40,23 @@ class PDFParser:
             }
             
         except Exception as e:
-            raise Exception(f"Error processing PDF {file_path}: {str(e)}") 
+            raise Exception(f"Error processing PDF {file_path}: {str(e)}")
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python pdf_parser.py <pdf_file_path>")
+        sys.exit(1)
+
+    file_path = sys.argv[1]
+    parser = PDFParser()
+    
+    try:
+        result = parser.extract_text(file_path)
+        # Print the result as JSON to stdout
+        print(json.dumps(result))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main() 

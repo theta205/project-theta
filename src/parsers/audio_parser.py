@@ -1,6 +1,8 @@
 import whisper
 from pathlib import Path
 from typing import Dict
+import json
+import sys
 
 class AudioParser:
     def __init__(self, model_size: str = "small"):
@@ -49,7 +51,7 @@ class AudioParser:
                     filtered_text.append(segment["text"].strip())
             
             return {
-                "text": " ".join(filtered_text),  # Reconstruct text from filtered segments
+                "text": " ".join(filtered_text),
                 "filename": file_path.name,
                 "file_type": "audio",
                 "language": result.get("language", "unknown"),
@@ -58,4 +60,23 @@ class AudioParser:
             }
             
         except Exception as e:
-            raise Exception(f"Error processing audio file {file_path}: {str(e)}") 
+            raise Exception(f"Error processing audio file {file_path}: {str(e)}")
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python audio_parser.py <audio_file_path>")
+        sys.exit(1)
+
+    file_path = sys.argv[1]
+    parser = AudioParser()
+    
+    try:
+        result = parser.transcribe(file_path)
+        # Print the result as JSON to stdout
+        print(json.dumps(result))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main() 
