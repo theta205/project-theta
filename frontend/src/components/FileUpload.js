@@ -3,183 +3,138 @@ import axios from 'axios';
 import './FileUpload.css';
 
 const FileUpload = () => {
-    const [files, setFiles] = useState([]);
-    const [uploadedFiles, setUploadedFiles] = useState([]);
+    const [selectedFiles, setSelectedFiles] = useState([]);
+    const [className, setClassName] = useState('');
+    const [fileTopics, setFileTopics] = useState({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [serverPort, setServerPort] = useState(5001);
-    const [parsingStatus, setParsingStatus] = useState({});
-
-    useEffect(() => {
-        // Check server health and get port
-        const checkServer = async () => {
-            try {
-                const response = await axios.get('http://localhost:5001/api/health');
-                setServerPort(response.data.port);
-            } catch (err) {
-                try {
-                    const response = await axios.get('http://localhost:5002/api/health');
-                    setServerPort(response.data.port);
-                } catch (err) {
-                    setError('Server is not available');
-                }
-            }
-        };
-        checkServer();
-    }, []);
+    const [results, setResults] = useState([]);
 
     const handleFileChange = (e) => {
-        const selectedFiles = Array.from(e.target.files);
-        const validFiles = selectedFiles.filter(file => {
-            const fileType = file.type;
-            return fileType === 'application/pdf' || fileType === 'audio/mp3' || fileType === 'audio/mpeg';
-        });
+        const newFiles = Array.from(e.target.files);
+        if (newFiles.length > 0) {
+            // Filter out duplicates by checking if the file name already exists
+            const uniqueNewFiles = newFiles.filter(newFile => 
+                !selectedFiles.some(existingFile => existingFile.name === newFile.name)
+            );
 
-        if (validFiles.length !== selectedFiles.length) {
-            setError('Only PDF and MP3 files are allowed');
-        } else {
-            setError(null);
-            setFiles(validFiles);
+            // Add only unique files to the list, up to 10 total
+            const updatedFiles = [...selectedFiles, ...uniqueNewFiles].slice(0, 10);
+            setSelectedFiles(updatedFiles);
+            e.target.value = '';
+
+            // Show alert if any duplicates were found
+            if (uniqueNewFiles.length < newFiles.length) {
+                alert('Some files were skipped because they were already selected.');
+            }
         }
     };
 
-    const handleUpload = async () => {
-        if (files.length === 0) return;
-
-        setLoading(true);
-        setError(null);
-
-        try {
-            const uploadPromises = files.map(async (file) => {
-                const formData = new FormData();
-                formData.append('file', file);
-
-                console.log('Uploading file:', file.name); // Debug log
-                const response = await axios.post(
-                    `http://localhost:${serverPort}/api/upload`,
-                    formData,
-                    {
-                        headers: {
-                            'Content-Type': 'multipart/form-data',
-                        },
-                    }
-                );
-                console.log('Upload response:', response.data); // Debug log
-
-                return {
-                    file,
-                    status: 'uploaded',
-                    response: response.data
-                };
-            });
-
-            const results = await Promise.all(uploadPromises);
-            setUploadedFiles(results);
-            setFiles([]);
-        } catch (err) {
-            console.error('Upload error:', err); // Debug log
-            setError(err.response?.data?.error || 'Upload failed');
-        } finally {
-            setLoading(false);
-        }
+    const handleTopicChange = (fileName, topic) => {
+        setFileTopics(prev => ({
+            ...prev,
+            [fileName]: topic
+        }));
     };
 
     const handleParse = async () => {
-        if (uploadedFiles.length === 0) return;
+        if (!selectedFiles.length) {
+            alert('Please select at least one file');
+            return;
+        }
 
         setLoading(true);
         setError(null);
+        setResults([]);
 
         try {
-            const parsePromises = uploadedFiles.map(async (fileData) => {
-                setParsingStatus(prev => ({
-                    ...prev,
-                    [fileData.file.name]: 'parsing'
-                }));
-
-                const response = await axios.post(
-                    `http://localhost:${serverPort}/api/process`,
-                    { filename: fileData.file.name },
-                    {
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                    }
-                );
-
-                setParsingStatus(prev => ({
-                    ...prev,
-                    [fileData.file.name]: 'completed'
-                }));
-
-                return {
-                    ...fileData,
-                    parseResult: response.data
-                };
+            const formData = new FormData();
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            formData.append('className', className);
+            selectedFiles.forEach(file => {
+                formData.append(`topic_${file.name}`, fileTopics[file.name] || '');
             });
 
-            const results = await Promise.all(parsePromises);
-            setUploadedFiles(results);
+            const response = await axios.post('http://localhost:5001/api/process', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            const processedResults = Array.isArray(response.data) ? response.data : [response.data];
+            setResults(processedResults);
         } catch (err) {
-            setError(err.response?.data?.error || 'Parsing failed');
+            setError(err.response?.data?.error || 'Failed to process files');
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="file-upload">
-            <h2>Upload Files</h2>
+        <div className="file-upload-container">
             <div className="upload-section">
                 <input
-                    type="file"
-                    accept=".pdf,.mp3"
-                    multiple
-                    onChange={handleFileChange}
-                    disabled={loading}
+                    type="text"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    placeholder="Enter class name"
+                    className="class-input"
                 />
-                <button 
-                    onClick={handleUpload} 
-                    disabled={files.length === 0 || loading}
-                >
-                    {loading ? 'Uploading...' : 'Upload Files'}
-                </button>
+                <input
+                    type="file"
+                    onChange={handleFileChange}
+                    multiple
+                    accept=".pdf,.mp3,.wav,.m4a,.docx,.doc,.md,.txt,.html,.odt,.pptx,.ppt,.xls,.xlsx"
+                />
             </div>
 
-            {error && <div className="error">{error}</div>}
-            
-            {uploadedFiles.length > 0 && (
-                <div className="uploaded-files">
-                    <h3>Uploaded Files:</h3>
+            {selectedFiles.length > 0 && (
+                <div className="selected-files">
+                    <h3>Selected Files ({selectedFiles.length}/10):</h3>
                     <ul>
-                        {uploadedFiles.map((fileData, index) => (
+                        {selectedFiles.map((file, index) => (
                             <li key={index}>
-                                {fileData.file.name}
-                                <span className={`status ${parsingStatus[fileData.file.name] || 'pending'}`}>
-                                    {parsingStatus[fileData.file.name] || 'Pending'}
-                                </span>
+                                <div className="file-item">
+                                    <span className="file-name">{file.name}</span>
+                                    <input
+                                        type="text"
+                                        value={fileTopics[file.name] || ''}
+                                        onChange={(e) => handleTopicChange(file.name, e.target.value)}
+                                        placeholder="Enter topic (optional)"
+                                        className="topic-input"
+                                    />
+                                </div>
                             </li>
                         ))}
                     </ul>
                     <button 
                         onClick={handleParse}
-                        disabled={loading || Object.values(parsingStatus).some(status => status === 'parsing')}
+                        disabled={loading || !selectedFiles.length}
+                        className="parse-button"
                     >
-                        {loading ? 'Parsing...' : 'Parse Files'}
+                        {loading ? 'Processing...' : 'Ready to Parse'}
                     </button>
                 </div>
             )}
 
-            {uploadedFiles.some(file => file.parseResult) && (
-                <div className="results">
+            {error && (
+                <div className="error-message">
+                    {error}
+                </div>
+            )}
+
+            {results.length > 0 && (
+                <div className="results-section">
                     <h3>Results:</h3>
-                    {uploadedFiles.map((fileData, index) => (
-                        fileData.parseResult && (
-                            <div key={index} className="result-item">
-                                <h4>{fileData.file.name}</h4>
-                                <pre>{JSON.stringify(fileData.parseResult, null, 2)}</pre>
-                            </div>
-                        )
+                    {results.map((result, index) => (
+                        <div key={index} className="result-item">
+                            <h4>File: {result?.filename || 'Unknown'}</h4>
+                            <p>Class: {result?.class || 'Not specified'}</p>
+                            {result?.topic && <p>Topic: {result.topic}</p>}
+                            <p>Text: {result?.text || 'No text content'}</p>
+                        </div>
                     ))}
                 </div>
             )}

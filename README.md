@@ -70,3 +70,37 @@ cp .env.example .env
 ```
 
 ## Project Structure
+
+## Installation
+
+### Python Dependencies
+1. Create and activate a virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+2. Install Python packages:
+```bash
+pip install -r requirements.txt
+```
+
+### System Dependencies
+For PDF and document processing, you'll need to install some system dependencies:
+
+#### macOS
+```bash
+# Install LibreOffice
+brew install --cask libreoffice
+
+# Install unoconv
+brew install unoconv
+```
+
+#### Linux
+```bash
+# Install LibreOffice and unoconv
+sudo apt install unoconv libreoffice
+```
+
+## Usage

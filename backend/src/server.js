@@ -16,6 +16,12 @@ dirs.forEach(dir => {
     }
 });
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Enable CORS with specific options
 app.use(cors({
     origin: 'http://localhost:3000', // Allow requests from React app
@@ -29,10 +35,10 @@ app.use(express.json());
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, '../../data/raw/'));
+        cb(null, uploadsDir);  // Use the absolute path
     },
     filename: function (req, file, cb) {
-        cb(null, file.originalname);
+        cb(null, Date.now() + '-' + file.originalname);
     }
 });
 
@@ -61,75 +67,109 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 });
 
 // File processing endpoint
-app.post('/api/process', async (req, res) => {
+app.post('/api/process', upload.array('files'), async (req, res) => {
     console.log('Process endpoint hit');
     try {
-        const { filename } = req.body;
-        if (!filename) {
-            return res.status(400).json({ error: 'No filename provided' });
+        const files = req.files;
+        const { className, note } = req.body;
+
+        if (!files || files.length === 0) {
+            return res.status(400).json({ error: 'No files provided' });
         }
 
-        // Determine file type and run appropriate parser
-        const fileExtension = path.extname(filename).toLowerCase();
-        let pythonScript;
-        
-        if (fileExtension === '.pdf') {
-            pythonScript = path.join(__dirname, '../../src/parsers/pdf_parser.py');
-        } else if (fileExtension === '.mp3') {
-            pythonScript = path.join(__dirname, '../../src/parsers/audio_parser.py');
-        } else {
-            return res.status(400).json({ error: 'Unsupported file type' });
+        const results = [];
+
+        for (const file of files) {
+            // Use let instead of const for filePath since it needs to be updated
+            let filePath = path.join(__dirname, '..', '..', 'uploads', file.filename);
+            console.log('Processing file at path:', filePath);
+            
+            const fileExt = path.extname(file.originalname).toLowerCase();
+            
+            // Check if file needs conversion
+            const needsConversion = !['.pdf', '.mp3', '.wav', '.m4a'].includes(fileExt);
+            
+            if (needsConversion) {
+                console.log('Converting file:', filePath);
+                // Convert file to PDF using venv Python
+                const convertProcess = spawn(path.join(__dirname, '..', '..', '.venv', 'bin', 'python3'), [
+                    path.join(__dirname, 'convert_to_pdf.py'),
+                    filePath
+                ]);
+
+                await new Promise((resolve, reject) => {
+                    convertProcess.on('close', (code) => {
+                        if (code === 0) {
+                            resolve();
+                        } else {
+                            reject(new Error('Conversion failed'));
+                        }
+                    });
+                });
+
+                // Update file path to the converted PDF
+                filePath = filePath.replace(fileExt, '.pdf');
+                console.log('Converted file path:', filePath);
+            }
+
+            // Determine which parser to use
+            const isAudio = ['.mp3', '.wav', '.m4a'].includes(fileExt);
+            const parserScript = isAudio ? 'audio_parser.py' : 'pdf_parser.py';
+
+            console.log('Running parser:', parserScript, 'for file:', filePath);
+
+            // Run the appropriate parser using venv Python
+            const pythonProcess = spawn(path.join(__dirname, '..', '..', '.venv', 'bin', 'python3'), [
+                path.join(__dirname, '..', '..', 'src', 'parsers', parserScript),
+                filePath
+            ]);
+
+            let outputData = '';
+            let errorData = '';
+
+            pythonProcess.stdout.on('data', (data) => {
+                console.log('Python stdout:', data.toString());
+                outputData += data.toString();
+            });
+
+            pythonProcess.stderr.on('data', (data) => {
+                console.error('Python stderr:', data.toString());
+                errorData += data.toString();
+            });
+
+            await new Promise((resolve, reject) => {
+                pythonProcess.on('close', (code) => {
+                    console.log('Python process exited with code:', code);
+                    if (code === 0) {
+                        try {
+                            const result = JSON.parse(outputData);
+                            result.class = className || '';
+                            result.topic = note || '';
+                            results.push(result);
+                            resolve();
+                        } catch (e) {
+                            console.error('Failed to parse Python output:', e);
+                            console.error('Raw output:', outputData);
+                            reject(new Error('Failed to parse Python script output'));
+                        }
+                    } else {
+                        console.error('Python script failed with error:', errorData);
+                        reject(new Error(`Python script failed: ${errorData}`));
+                    }
+                });
+            });
+
+            // Clean up converted files
+            if (needsConversion) {
+                try {
+                    fs.unlinkSync(filePath);
+                } catch (err) {
+                    console.error('Error cleaning up converted file:', err);
+                }
+            }
         }
 
-        const filePath = path.join(__dirname, '../../data/raw', filename);
-        
-        // Debug logging
-        console.log('Current directory:', __dirname);
-        console.log('Python script path:', pythonScript);
-        console.log('File path:', filePath);
-
-        // Use the virtual environment's Python
-        const pythonPath = path.join(__dirname, '../../.venv/bin/python3');
-
-        // Run the appropriate Python script with the virtual environment's Python
-        const pythonProcess = spawn(pythonPath, [pythonScript, filePath]);
-
-        let outputData = '';
-        let errorData = '';
-
-        pythonProcess.stdout.on('data', (data) => {
-            const output = data.toString();
-            outputData += output;
-            console.log('Python output:', output);
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-            const error = data.toString();
-            errorData += error;
-            console.error('Python error:', error);
-        });
-
-        pythonProcess.on('close', (code) => {
-            console.log('Python process exited with code:', code);
-            if (code !== 0) {
-                return res.status(500).json({ 
-                    error: 'Python script failed',
-                    details: errorData
-                });
-            }
-
-            try {
-                // Try to parse the output as JSON
-                const result = JSON.parse(outputData);
-                res.json(result);
-            } catch (e) {
-                // If parsing fails, send the raw output
-                res.json({
-                    message: 'File processed successfully',
-                    output: outputData
-                });
-            }
-        });
+        res.json(results);
     } catch (error) {
         console.error('Process error:', error);
         res.status(500).json({ 

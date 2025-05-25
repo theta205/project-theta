@@ -56,7 +56,9 @@ class AudioParser:
                 "file_type": "audio",
                 "language": result.get("language", "unknown"),
                 "segments": clean_segments,
-                "duration": result.get("duration", 0)
+                "duration": result.get("duration", 0),
+                "class": "",  # Will be filled by server
+                "topic": ""   # Will be filled by server
             }
             
         except Exception as e:

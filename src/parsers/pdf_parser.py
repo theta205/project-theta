@@ -36,7 +36,9 @@ class PDFParser:
                 "text": "\n".join(text_content),
                 "num_pages": len(doc),
                 "filename": file_path.name,
-                "file_type": "pdf"
+                "file_type": "pdf",
+                "class": "",  # Will be filled by server
+                "topic": ""   # Will be filled by server
             }
             
         except Exception as e:
