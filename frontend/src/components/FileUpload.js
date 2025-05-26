@@ -9,6 +9,10 @@ const FileUpload = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [results, setResults] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchError, setSearchError] = useState(null);
 
     const handleFileChange = (e) => {
         const newFiles = Array.from(e.target.files);
@@ -72,6 +76,51 @@ const FileUpload = () => {
         }
     };
 
+    const handleSearch = async () => {
+        if (!searchQuery.trim()) {
+            alert('Please enter a search query');
+            return;
+        }
+
+        setSearchLoading(true);
+        setSearchError(null);
+        setSearchResults([]);
+
+        try {
+            const response = await axios.post('http://localhost:5001/api/search', {
+                query: searchQuery
+            });
+
+            console.log('Search response:', response.data);
+
+            if (response.data.error) {
+                setSearchError(response.data.error);
+                return;
+            }
+
+            const results = response.data.results || response.data;
+            console.log('Processed results:', results);
+
+            if (typeof results === 'string') {
+                try {
+                    const parsedResults = JSON.parse(results);
+                    setSearchResults(Array.isArray(parsedResults) ? parsedResults : [parsedResults]);
+                } catch (e) {
+                    console.error('Failed to parse results:', e);
+                    setSearchError('Invalid response format');
+                }
+            } else {
+                setSearchResults(Array.isArray(results) ? results : [results]);
+            }
+        } catch (err) {
+            console.error('Search error:', err);
+            setSearchError(err.response?.data?.error || 'Search failed');
+            setSearchResults([]);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
     return (
         <div className="file-upload-container">
             <div className="upload-section">
@@ -119,6 +168,53 @@ const FileUpload = () => {
                 </div>
             )}
 
+            <div className="search-section">
+                <h3>Search Uploaded Content</h3>
+                <div className="search-input-group">
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Enter your search query"
+                        className="search-input"
+                    />
+                    <button 
+                        onClick={handleSearch}
+                        disabled={searchLoading}
+                        className="search-button"
+                    >
+                        {searchLoading ? 'Searching...' : 'Search'}
+                    </button>
+                </div>
+
+                {searchError && (
+                    <div className="error-message">
+                        {searchError}
+                    </div>
+                )}
+
+                {Array.isArray(searchResults) && searchResults.length > 0 && (
+                    <div className="search-results">
+                        <h4>Search Results:</h4>
+                        {searchResults.map((result, index) => (
+                            <div key={index} className="search-result-item">
+                                <div className="result-header">
+                                    <span className="result-filename">{result?.filename || 'Unknown'}</span>
+                                    <span className="result-score">
+                                        Score: {(result?.similarity_score || 0).toFixed(4)}
+                                    </span>
+                                </div>
+                                <div className="result-metadata">
+                                    <span className="result-class">Class: {result?.class || 'Not specified'}</span>
+                                    <span className="result-topic">Topic: {result?.topic || 'Not specified'}</span>
+                                </div>
+                                <p className="result-text">{result?.text || 'No text content'}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
             {error && (
                 <div className="error-message">
                     {error}
@@ -127,7 +223,7 @@ const FileUpload = () => {
 
             {results.length > 0 && (
                 <div className="results-section">
-                    <h3>Results:</h3>
+                    <h3>Parsing Results:</h3>
                     {results.map((result, index) => (
                         <div key={index} className="result-item">
                             <h4>File: {result?.filename || 'Unknown'}</h4>

@@ -169,9 +169,159 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             }
         }
 
+        // Save the parsed results to a JSON file
+        const processedDir = path.join(__dirname, '..', 'processed');
+        if (!fs.existsSync(processedDir)) {
+            fs.mkdirSync(processedDir, { recursive: true });
+            console.log('Created processed directory:', processedDir);
+        }
+
+        // Save each result to a separate JSON file
+        for (const result of results) {
+            const filename = `${result.filename}.json`;
+            const filePath = path.join(processedDir, filename);
+            try {
+                fs.writeFileSync(filePath, JSON.stringify(result, null, 2));
+                console.log('Saved parsed result to:', filePath);
+                
+                // Add debug logging
+                console.log('File contents:', JSON.stringify(result, null, 2));
+            } catch (error) {
+                console.error('Error saving file:', filePath, error);
+            }
+        }
+
+        // List all files in the processed directory
+        const savedFiles = fs.readdirSync(processedDir);
+        console.log('Files in processed directory:', savedFiles);
+
+        // After all files are processed, run the embedding script
+        console.log('Running embedding process...');
+        const embedScriptPath = path.join(__dirname, '..', '..', 'src', 'parsers', 'embed_parser.py');
+        console.log('Embed script path:', embedScriptPath);
+
+        const embedProcess = spawn(path.join(__dirname, '..', '..', '.venv', 'bin', 'python3'), [
+            embedScriptPath
+        ]);
+
+        let embedOutput = '';
+        let embedError = '';
+
+        embedProcess.stdout.on('data', (data) => {
+            console.log('Embedding stdout:', data.toString());
+            embedOutput += data.toString();
+        });
+
+        embedProcess.stderr.on('data', (data) => {
+            console.error('Embedding stderr:', data.toString());
+            embedError += data.toString();
+        });
+
+        try {
+            await new Promise((resolve, reject) => {
+                embedProcess.on('close', (code) => {
+                    if (code === 0) {
+                        console.log('✅ Embedding process completed successfully');
+                        resolve();
+                    } else {
+                        console.error('❌ Embedding process failed with code:', code);
+                        console.error('Error output:', embedError);
+                        reject(new Error(`Embedding failed: ${embedError}`));
+                    }
+                });
+            });
+        } catch (embedError) {
+            console.error('Embedding error:', embedError);
+            // Continue with the response even if embedding fails
+        }
+
+        // Return the parsing results
         res.json(results);
     } catch (error) {
         console.error('Process error:', error);
+        res.status(500).json({ 
+            error: 'Server error',
+            details: error.message
+        });
+    }
+});
+
+// Search endpoint
+app.post('/api/search', async (req, res) => {
+    console.log('Search endpoint hit');
+    try {
+        const { query } = req.body;
+        if (!query) {
+            return res.status(400).json({ error: 'No search query provided' });
+        }
+
+        // Run the search script
+        const searchScriptPath = path.join(__dirname, '..', '..', 'src', 'parsers', 'test_embeddings.py');
+        console.log('Search script path:', searchScriptPath);
+
+        const searchProcess = spawn(path.join(__dirname, '..', '..', '.venv', 'bin', 'python3'), [
+            searchScriptPath,
+            '--query', query,
+            '--collection', 'documents',
+            '--n-results', '5'
+        ]);
+
+        let searchOutput = '';
+        let searchError = '';
+
+        searchProcess.stdout.on('data', (data) => {
+            console.log('Search stdout:', data.toString());
+            searchOutput += data.toString();
+        });
+
+        searchProcess.stderr.on('data', (data) => {
+            console.error('Search stderr:', data.toString());
+            searchError += data.toString();
+        });
+
+        try {
+            await new Promise((resolve, reject) => {
+                searchProcess.on('close', (code) => {
+                    if (code === 0) {
+                        console.log('✅ Search completed successfully');
+                        resolve();
+                    } else {
+                        console.error('❌ Search failed with code:', code);
+                        console.error('Error output:', searchError);
+                        reject(new Error(`Search failed: ${searchError}`));
+                    }
+                });
+            });
+
+            // Parse the search results
+            try {
+                const results = JSON.parse(searchOutput);
+                if (results.error) {
+                    if (results.details.includes("does not exists")) {
+                        return res.status(400).json({ 
+                            error: 'No indexed content found. Please upload and parse some files first.',
+                            details: 'The search index has not been created yet. This usually means no files have been processed or the embedding process failed.'
+                        });
+                    }
+                    return res.status(400).json(results);
+                }
+                res.json(results);
+            } catch (parseError) {
+                console.error('Failed to parse search results:', parseError);
+                res.status(500).json({ 
+                    error: 'Failed to parse search results',
+                    details: searchOutput
+                });
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            res.status(500).json({ 
+                error: 'Search failed',
+                details: error.message
+            });
+        }
+    } catch (error) {
+        console.error('Search error:', error);
         res.status(500).json({ 
             error: 'Server error',
             details: error.message
