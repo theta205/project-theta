@@ -1,19 +1,27 @@
-import React from 'react';
-import FileUpload from './components/FileUpload';
-import './App.css';
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import LoginPage from "./LoginPage";
+import HomePage from "./HomePage";
+import {
+  SignedIn,
+  SignedOut,
+  RedirectToSignIn,
+} from "@clerk/clerk-react";
 
-function App() {
+export default function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Project Theta</h1>
-        <p>Upload your lecture materials for processing</p>
-      </header>
-      <main>
-        <FileUpload />
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="*"
+          element={
+            <SignedOut>
+              <RedirectToSignIn />
+            </SignedOut>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
-
-export default App; 

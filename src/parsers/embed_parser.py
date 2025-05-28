@@ -1,14 +1,17 @@
 import os
 import json
 import chromadb
-from openai import OpenAI
 from dotenv import load_dotenv
 from typing import List, Dict
 import tempfile
-from ..utils.aws_utils import AWSManager
+import sys
+import os
+
+# Add the project root to sys.path for absolute imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from src.utils.aws_utils import AWSManager
 
 load_dotenv()
-client = OpenAI()
 aws_manager = AWSManager()
 
 # Initialize persistent ChromaDB client
@@ -16,9 +19,15 @@ chroma_client = chromadb.PersistentClient(path="chroma_db")
 
 def load_parsed_files() -> List[Dict]:
     """Load all parsed files from DynamoDB."""
-    print("Loading files from DynamoDB...")
+    print("[DEBUG] Loading files from DynamoDB...")
     files = aws_manager.list_all_files()
-    print(f"✅ Loaded {len(files)} files from DynamoDB")
+    print(f"[DEBUG] Loaded {len(files)} files from DynamoDB")
+    for idx, f in enumerate(files):
+        file_id = f.get('file_id', f'idx_{idx}')
+        has_text = 'text' in f and bool(f['text'])
+        print(f"[DEBUG] File {idx}: file_id={file_id} | text present: {has_text} | filename={f.get('filename', '')}")
+        if not has_text:
+            print(f"    [DEBUG] Skipping/cleaning: {json.dumps(f, indent=2, default=str)}")
     return files
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
@@ -38,15 +47,30 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[st
 def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
     """Prepare chunks with metadata from parsed files, grouped by user_id."""
     user_chunks = {}
-    
+    valid_count = 0
+    skipped_count = 0
     for data in parsed_data:
+        file_id = data.get('file_id', 'UNKNOWN')
+        # Defensive: Skip records without 'text'
+        if 'text' not in data or not isinstance(data['text'], str) or not data['text'].strip():
+            print(f"[CLEANUP] Skipping and deleting file_id={file_id} - missing or empty 'text' field")
+            skipped_count += 1
+            # Attempt to delete from DynamoDB if file_id is available
+            if file_id != 'UNKNOWN':
+                try:
+                    aws_manager.delete_file_by_id(file_id)
+                    print(f"[CLEANUP] Deleted file_id={file_id} from DynamoDB.")
+                except Exception as e:
+                    print(f"[CLEANUP] Failed to delete file_id={file_id} from DynamoDB: {e}")
+            continue
         user_id = data.get('user_id', 'default_user')
         if user_id not in user_chunks:
             user_chunks[user_id] = []
-            
         # Create chunks from the text
         text_chunks = chunk_text(data['text'])
-        
+        if not text_chunks:
+            print(f"[WARNING] No chunks created for file_id={file_id} (text length={len(data['text'])})")
+            continue
         # Create chunk objects with metadata
         for i, chunk in enumerate(text_chunks):
             chunk_obj = {
@@ -62,21 +86,23 @@ def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
                 'timestamp': data.get('processed_date', '')
             }
             user_chunks[user_id].append(chunk_obj)
-    
+            valid_count += 1
+    print(f"[DEBUG] Chunks prepared: valid={valid_count}, skipped={skipped_count}")
+    for user_id, chunks in user_chunks.items():
+        print(f"[DEBUG] User {user_id} has {len(chunks)} chunks. Sample chunk: {chunks[0]['text'][:120]}...")
     return user_chunks
 
 def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
     """Save chunks to user-specific ChromaDB collections."""
     for user_id, chunks in user_chunks.items():
         collection_name = f"user_{user_id}"
-        print(f"Processing collection: {collection_name}")
-        
+        print(f"[DEBUG] Processing collection: {collection_name}")
+        print(f"[DEBUG] Preparing to upsert {len(chunks)} chunks for user {user_id}")
         # Get or create collection
         collection = chroma_client.get_or_create_collection(
             name=collection_name,
             metadata={"user_id": user_id}
         )
-        
         # Prepare documents, ids, and metadatas
         documents = [chunk['text'] for chunk in chunks]
         ids = [f"{chunk['file_id']}_{chunk['chunk_index']}" for chunk in chunks]
@@ -91,15 +117,17 @@ def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
             'user_id': chunk['user_id'],
             'timestamp': chunk['timestamp']
         } for chunk in chunks]
-        
+        print(f"[DEBUG] Example document: {documents[0][:100]}..." if documents else "[DEBUG] No documents to upsert.")
         # Add documents to collection
-        collection.upsert(
-            documents=documents,
-            ids=ids,
-            metadatas=metadatas
-        )
-        
-        print(f"✅ Added {len(chunks)} chunks to ChromaDB collection: {collection_name}")
+        if documents:
+            collection.upsert(
+                documents=documents,
+                ids=ids,
+                metadatas=metadatas
+            )
+            print(f"✅ Added {len(chunks)} chunks to ChromaDB collection: {collection_name}")
+        else:
+            print(f"[WARNING] No documents to upsert for user {user_id}")
 
 def main():
     try:

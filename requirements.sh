@@ -17,7 +17,7 @@ pip install tiktoken==0.6.0
 pip install pydantic==2.6.1
 pip install openai-whisper==20231117
 
-echo -e "${BLUE}Installing Node.js dependencies...${NC}"
+echo -e "${BLUE}Installing backend Node.js dependencies...${NC}"
 cd backend
 npm install aws-sdk@2.1550.0
 npm install cors@2.8.5
@@ -26,5 +26,14 @@ npm install express@4.18.2
 npm install multer@1.4.5-lts.1
 npm install uuid@9.0.1
 npm install nodemon@3.0.3 --save-dev
+pip install boto3
+cd ..
+
+echo -e "${BLUE}Installing frontend dependencies (React, Tailwind, shadcn/ui)...${NC}"
+cd frontend
+npm install
+# Tailwind and shadcn/ui dependencies should be in package.json
+# If shadcn CLI fails, add component files manually to src/components/ui/
+cd ..
 
 echo -e "${GREEN}All dependencies installed successfully!${NC}"
