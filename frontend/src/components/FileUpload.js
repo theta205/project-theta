@@ -19,6 +19,7 @@ function isValidParsedResult(result) {
 }
 
 const FileUpload = () => {
+  // File upload and parse state
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [className, setClassName] = useState('');
   const [fileTopics, setFileTopics] = useState({});
@@ -26,6 +27,11 @@ const FileUpload = () => {
   const [error, setError] = useState(null);
   const [results, setResults] = useState([]);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [searchResults, setSearchResults] = useState([]);
 
   const { user } = useUser();
 
@@ -100,17 +106,33 @@ const FileUpload = () => {
         // Automatically trigger parsing after upload
         try {
           const processFormData = new FormData();
+          // Attach each file and its file_id
           selectedFiles.forEach(file => {
             processFormData.append('files', file);
             processFormData.append('file_id', file.file_id);
           });
+
+          // Attach user_id from Clerk
           if (user?.id) {
             processFormData.append('user_id', user.id);
+          } else {
+            console.warn('[FileUpload] No user_id found, aborting parse.');
+            setError('You must be signed in to parse files.');
+            setLoading(false);
+            return;
           }
+
           processFormData.append('className', className);
           selectedFiles.forEach(file => {
             processFormData.append(`topic_${file.name}`, fileTopics[file.name] || '');
           });
+
+          // Debug: log formData contents
+          console.log('[FileUpload] Submitting /api/process with user_id:', user.id);
+          for (let pair of processFormData.entries()) {
+            console.log(`[FileUpload] FormData: ${pair[0]} =`, pair[1]);
+          }
+
           const processResponse = await axios.post('/api/process', processFormData, {
             headers: {
               'Content-Type': 'multipart/form-data'
@@ -155,13 +177,14 @@ const FileUpload = () => {
     }
   };
 
+  // Search handler (fixed state usage)
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       alert('Please enter a search query');
       return;
     }
 
-    setSearchLoading(true);
+    setSearchLoading(true); // Renamed for clarity
     setSearchError(null);
     setSearchResults([]);
 
@@ -196,7 +219,7 @@ const FileUpload = () => {
       setSearchError(err.response?.data?.error || 'Search failed');
       setSearchResults([]);
     } finally {
-      setLoading(false);
+      setSearchLoading(false); // Renamed for clarity
     }
   };
 

@@ -18,8 +18,10 @@ try:
 
     # Initialize persistent ChromaDB client
     try:
-        chroma_client = chromadb.PersistentClient(path="chroma_db")
-        debug_log("ChromaDB client initialized")
+        # Always use backend chroma_db directory
+        chroma_db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend/chroma_db'))
+        chroma_client = chromadb.PersistentClient(path=chroma_db_path)
+        debug_log(f"ChromaDB client initialized at {chroma_db_path}")
     except Exception as e:
         debug_log(f"ChromaDB client init failed: {e}")
         print(json.dumps({
@@ -31,6 +33,8 @@ try:
 
     def search_similar_chunks(query: str, collection_name: str = "documents", n_results: int = 5, topic: str = None) -> List[Dict]:
         debug_log(f"search_similar_chunks called with query='{query}', collection='{collection_name}', n_results={n_results}, topic={topic}")
+        # [DEBUG] If embedding/uploading was performed here, log the collection:
+        # debug_log(f"Uploading/embedding into ChromaDB collection: {collection_name}")
         try:
             debug_log(f"Getting or creating collection: {collection_name}")
             collection = chroma_client.get_or_create_collection(name=collection_name)

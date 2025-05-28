@@ -238,6 +238,11 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
                                 result.topic = typeof result.topic !== 'undefined' ? result.topic : (note || '');
                                 result.text = typeof result.text !== 'undefined' ? result.text : '';
                                 result.s3_key = s3Key;
+                                result.file_id = fileId; // Ensure file_id is always present
+                                let rawUserId = req.body.user_id || 'default_user';
+                                let userId = rawUserId.startsWith('user_') ? rawUserId.slice(5) : rawUserId;
+                                result.user_id = userId; // Always just Clerk user ID
+                                console.log(`[PROCESS DEBUG] Normalized user_id for file ${result.filename}:`, userId);
                                 results.push(result);
                                 console.log(`[PROCESS DEBUG] Parsed file: ${result.filename}`);
                                 resolve();
@@ -283,16 +288,28 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             }).promise();
         }
 
-        // Run embedding process
-        console.log('[DEBUG] Starting embedding for all parsed files...');
+        // Run embedding process and send parsed results as JSON via stdin
+        console.log('[DEBUG] Starting embedding for all parsed files (passing results as stdin)...');
         const embedProcess = spawn('python3', [
             path.join(__dirname, '..', '..', 'src', 'parsers', 'embed_parser.py')
-        ]);
+        ], {
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
 
         let embedError = '';
+        let embedOutput = '';
         embedProcess.stderr.on('data', (data) => {
             embedError += data.toString();
+            console.error('[EMBED STDERR]', data.toString());
         });
+        embedProcess.stdout.on('data', (data) => {
+            embedOutput += data.toString();
+            console.log('[EMBED STDOUT]', data.toString());
+        });
+
+        // Write the results array as JSON to stdin of embed_parser
+        embedProcess.stdin.write(JSON.stringify(results));
+        embedProcess.stdin.end();
 
         await new Promise((resolve, reject) => {
             embedProcess.on('close', (code) => {

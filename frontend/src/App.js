@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LoginPage from "./LoginPage";
 import HomePage from "./HomePage";
+import UserCollectionView from "./components/UserCollectionView";
 import {
   SignedIn,
   SignedOut,
@@ -13,6 +14,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/user/:collectionName" element={<UserCollectionView />} />
         <Route
           path="*"
           element={

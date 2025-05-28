@@ -9,26 +9,8 @@ import os
 
 # Add the project root to sys.path for absolute imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from src.utils.aws_utils import AWSManager
-
-load_dotenv()
-aws_manager = AWSManager()
-
 # Initialize persistent ChromaDB client
 chroma_client = chromadb.PersistentClient(path="chroma_db")
-
-def load_parsed_files() -> List[Dict]:
-    """Load all parsed files from DynamoDB."""
-    print("[DEBUG] Loading files from DynamoDB...")
-    files = aws_manager.list_all_files()
-    print(f"[DEBUG] Loaded {len(files)} files from DynamoDB")
-    for idx, f in enumerate(files):
-        file_id = f.get('file_id', f'idx_{idx}')
-        has_text = 'text' in f and bool(f['text'])
-        print(f"[DEBUG] File {idx}: file_id={file_id} | text present: {has_text} | filename={f.get('filename', '')}")
-        if not has_text:
-            print(f"    [DEBUG] Skipping/cleaning: {json.dumps(f, indent=2, default=str)}")
-    return files
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
     """Split text into overlapping chunks."""
@@ -53,17 +35,11 @@ def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
         file_id = data.get('file_id', 'UNKNOWN')
         # Defensive: Skip records without 'text'
         if 'text' not in data or not isinstance(data['text'], str) or not data['text'].strip():
-            print(f"[CLEANUP] Skipping and deleting file_id={file_id} - missing or empty 'text' field")
+            print(f"[CLEANUP] Skipping file_id={file_id} - missing or empty 'text' field")
             skipped_count += 1
-            # Attempt to delete from DynamoDB if file_id is available
-            if file_id != 'UNKNOWN':
-                try:
-                    aws_manager.delete_file_by_id(file_id)
-                    print(f"[CLEANUP] Deleted file_id={file_id} from DynamoDB.")
-                except Exception as e:
-                    print(f"[CLEANUP] Failed to delete file_id={file_id} from DynamoDB: {e}")
             continue
         user_id = data.get('user_id', 'default_user')
+        print(f"[EMBED DEBUG] Processing chunk for user_id: {user_id}")
         if user_id not in user_chunks:
             user_chunks[user_id] = []
         # Create chunks from the text
@@ -76,7 +52,7 @@ def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
             chunk_obj = {
                 'text': chunk,
                 'filename': data['filename'],
-                'file_id': data['file_id'],
+                'file_id': data.get('file_id', 'UNKNOWN'),
                 'class': data.get('class', ''),
                 'topic': data.get('topic', ''),
                 'chunk_index': i,
@@ -89,7 +65,8 @@ def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
             valid_count += 1
     print(f"[DEBUG] Chunks prepared: valid={valid_count}, skipped={skipped_count}")
     for user_id, chunks in user_chunks.items():
-        print(f"[DEBUG] User {user_id} has {len(chunks)} chunks. Sample chunk: {chunks[0]['text'][:120]}...")
+        if chunks:
+            print(f"[DEBUG] User {user_id} has {len(chunks)} chunks. Sample chunk: {chunks[0]['text'][:120]}...")
     return user_chunks
 
 def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
@@ -120,6 +97,7 @@ def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
         print(f"[DEBUG] Example document: {documents[0][:100]}..." if documents else "[DEBUG] No documents to upsert.")
         # Add documents to collection
         if documents:
+            print(f"[DEBUG] Uploading/embedding into ChromaDB collection: {collection_name}")
             collection.upsert(
                 documents=documents,
                 ids=ids,
@@ -130,28 +108,37 @@ def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
             print(f"[WARNING] No documents to upsert for user {user_id}")
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Embed parsed file data into ChromaDB.")
+    parser.add_argument('--input', type=str, default=None, help='Path to parsed JSON file. If not provided, reads from stdin.')
+    args = parser.parse_args()
+
     try:
-        # Load parsed files from DynamoDB
-        parsed_data = load_parsed_files()
-        print(f"✅ Loaded {len(parsed_data)} parsed files")
-        
+        # Read parsed data from file or stdin
+        if args.input:
+            with open(args.input, 'r', encoding='utf-8') as f:
+                parsed_data = json.load(f)
+        else:
+            parsed_data = json.load(sys.stdin)
+        print(f"✅ Loaded {len(parsed_data)} parsed files from {'file' if args.input else 'stdin'}")
+
         if len(parsed_data) == 0:
             print("No parsed files found, skipping embedding process")
             return
-        
+
         # Prepare chunks with metadata, grouped by user
         user_chunks = prepare_chunks(parsed_data)
         print(f"✅ Created chunks for {len(user_chunks)} users")
-        
+
         if not user_chunks:
             print("No chunks created, skipping embedding process")
             return
-        
+
         # Save to ChromaDB
         print("Saving to ChromaDB...")
         save_to_chroma(user_chunks)
         print("✅ Chunks saved to ChromaDB")
-        
+
     except Exception as e:
         print(f"❌ Error: {str(e)}")
         raise e

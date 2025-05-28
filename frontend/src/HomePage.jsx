@@ -5,6 +5,21 @@ import ResultsSection from "./components/ResultsSection";
 import SearchSection from "./components/SearchSection";
 
 export default function HomePage() {
+  // Print the Clerk user object to console on render
+  React.useEffect(() => {
+    if (window.Clerk && window.Clerk.user) {
+      const user = window.Clerk.user;
+      // Try common Clerk username fields
+      const username = user.username || (user.primaryEmailAddress ? user.primaryEmailAddress.emailAddress : null) || user.id || null;
+      if (username) {
+        console.log('[HomePage] Username:', username);
+      } else {
+        console.log('[HomePage] No username found in Clerk user object:', user);
+      }
+    } else {
+      console.log('[HomePage] No Clerk user found.');
+    }
+  }, []);
   // State to pass results between FileUpload and ResultsSection
   const [results, setResults] = useState([]);
   // State for search
