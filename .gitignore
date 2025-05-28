@@ -26,6 +26,10 @@ venv/
 .venv/
 ENV/
 env/
+ENV/
+Env/
+VENV/
+pymupdf-venv/
 
 # Node
 node_modules/
@@ -38,6 +42,27 @@ yarn-error.log*
 .vscode/
 *.swp
 *.swo
+
+# ChromaDB
+chroma_db/
+
+# Local scripts
+list_user_files_dynamodb.py
+
+# AWS credentials and dotenv
+.env
+*.env
+.aws/
+
+# Data/output
+*.log
+*.tmp
+*.bak
+*.sqlite3
+*.db
+__output__/
+.DS_Store
+uploads/
 
 # Project specific
 data/raw/*
