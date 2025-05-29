@@ -1,5 +1,7 @@
-from document_converter import convert_to_pdf
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 def convert_to_pdf(input_path: str, output_dir: str = "."):
     input_path = Path(input_path).resolve()
@@ -35,6 +37,8 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python convert_to_pdf.py <input_file> [output_dir]")
         sys.exit(1)
+
     input_file = sys.argv[1]
     output_folder = sys.argv[2] if len(sys.argv) > 2 else "."
+
     convert_to_pdf(input_file, output_folder)
