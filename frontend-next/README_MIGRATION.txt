@@ -1,0 +1,1 @@
+This Next.js app was created as a migration target for your CRA-based frontend. Migrate components, pages, assets, and styles from ../frontend as needed. See src/components/README_MIGRATION.txt for details.
