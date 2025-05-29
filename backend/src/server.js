@@ -299,12 +299,12 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             let pdfPath = tmpFilePath;
             let tempPdfToDelete = null;
             if (!isAudio && fileExt !== '.pdf' && supportedFiletypes.includes(fileExt)) {
-                // Convert to PDF using toPdf.py
+                // Convert to PDF using convert_to_pdf.py
                 const { spawnSync } = require('child_process');
                 const pdfOutputPath = pathTmp.join(tmpDir, `${fileId}.pdf`);
                 console.log(`[PROCESS DEBUG] Converting ${tmpFilePath} to PDF at ${pdfOutputPath}`);
                 const convertResult = spawnSync('python3', [
-                    path.join(__dirname, '..', '..', 'src', 'parsers', 'toPdf.py'),
+                    path.join(__dirname, '..', '..', 'src', 'parsers', 'convert_to_pdf.py'),
                     tmpFilePath,
                     tmpDir
                 ], { encoding: 'utf-8' });

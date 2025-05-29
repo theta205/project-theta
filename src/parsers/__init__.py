@@ -1,5 +1,4 @@
-# Parsers package initialization
-from .pdf_parser import PDFParser
-from .audio_parser import AudioParser
+# Unified document parsing/conversion API
+from .document import PDFParser, AudioParser
 
-__all__ = ['PDFParser', 'AudioParser'] 
+__all__ = ["PDFParser", "AudioParser"]
