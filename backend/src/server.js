@@ -40,6 +40,68 @@ app.use(express.json());
 // Configure multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
 
+// List all ChromaDB collections
+app.get('/api/collections', async (req, res) => {
+    const pythonScript = path.resolve(__dirname, '../../src/parsers/list_collections.py');
+    const python = spawn('python3', [pythonScript]);
+    let data = '';
+    let errData = '';
+    python.stdout.on('data', chunk => data += chunk);
+    python.stderr.on('data', err => errData += err.toString());
+    python.on('close', code => {
+        try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+                res.status(500).json(parsed);
+            } else {
+                res.json(parsed);
+            }
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to parse Python output', details: data, stderr: errData });
+        }
+    });
+});
+
+// ChromaDB collection dump endpoint for debugging
+app.get('/api/collection/:collectionName', async (req, res) => {
+    const { collectionName } = req.params;
+    const pythonScript = path.resolve(__dirname, '../../src/parsers/dump_collection.py');
+    const command = `python3 ${pythonScript} ${collectionName}`;
+    console.log(`[COLLECTION DEBUG] Requested collection: ${collectionName}`);
+    console.log(`[COLLECTION DEBUG] Python script path: ${pythonScript}`);
+    console.log(`[COLLECTION DEBUG] Running command: ${command}`);
+    const python = spawn('python3', [pythonScript, collectionName]);
+    let data = '';
+    let errData = '';
+    python.stdout.on('data', chunk => {
+        data += chunk;
+        console.log(`[COLLECTION DEBUG] stdout: ${chunk}`);
+    });
+    python.stderr.on('data', err => {
+        errData += err.toString();
+        console.error(`[COLLECTION DEBUG] stderr: ${err}`);
+    });
+    python.on('close', code => {
+        console.log(`[COLLECTION DEBUG] Python process exited with code: ${code}`);
+        try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+                console.warn(`[COLLECTION DEBUG] Collection error: ${parsed.error}`);
+                res.status(404).json(parsed);
+            } else {
+                res.json(parsed);
+            }
+        } catch (e) {
+            console.error('[COLLECTION DEBUG] Failed to parse Python output:', e);
+            res.status(500).json({ error: 'Failed to parse Python output', details: data, stderr: errData });
+        }
+    });
+    python.on('error', err => {
+        console.error('[COLLECTION DEBUG] Failed to start Python process:', err);
+        res.status(500).json({ error: 'Failed to start Python process', details: err.message });
+    });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', port: port });
@@ -54,7 +116,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         const file = req.file;
         const userId = req.body.user_id;
         const fileId = req.body.file_id;
-        const s3Key = `uploads/${userId}_${file.originalname}`;
+        // Use file_id as the S3 key for consistency across endpoints
+        const s3Key = `uploads/${fileId}`;
         console.log(`[UPLOAD DEBUG] Incoming upload: user_id=${userId}, file_id=${fileId}, filename=${file.originalname}`);
         if (!userId) {
             console.error('[UPLOAD ERROR] No user_id provided');
@@ -126,24 +189,44 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return res.status(500).json({ error: 'Failed to upload to S3', details: s3Err.message });
         }
 
-        // Register file in DynamoDB if not already present
-        if (!fileRecord) {
+        // Check again for existing record just before insert to prevent race conditions
+        const normalizedUserId = userId.startsWith('user_') ? userId.slice(5) : userId;
+        const existingUpload = await dynamodb.get({
+            TableName: process.env.AWS_DYNAMODB_TABLE,
+            Key: {
+                user_id: normalizedUserId,
+                file_id: fileId
+            }
+        }).promise();
+        if (!existingUpload.Item) {
             try {
+                // Only store allowed metadata fields, never the file's text/content
                 await dynamodb.put({
                     TableName: process.env.AWS_DYNAMODB_TABLE,
                     Item: {
-                        user_id: userId,
+                        user_id: normalizedUserId,
                         file_id: fileId,
-                        filename: file.originalname,
+                        // Strip user_id prefix if present (e.g., user_<id>_filename.pdf)
+                        filename: (() => {
+                            const match = fileId.match(/^user_[^_]+_(.+)$/);
+                            return match ? match[1] : fileId;
+                        })(),
                         s3_key: s3Key,
-                        uploaded_at: new Date().toISOString()
+                        uploaded_at: new Date().toISOString(),
+                        class: req.body.class || '',
+                        topic: req.body.topic || '',
+                        file_type: req.body.file_type || '',
+                        num_pages: undefined
+                        // Do NOT include 'text' or file contents here
                     }
                 }).promise();
-                console.log(`[UPLOAD DEBUG] File registered in DynamoDB: user_id=${userId}, file_id=${fileId}`);
+                console.log(`[UPLOAD DEBUG] File registered in DynamoDB: user_id=${normalizedUserId}, file_id=${fileId}`);
             } catch (ddbErr) {
                 console.error('[UPLOAD ERROR] Failed to register file in DynamoDB:', ddbErr);
                 return res.status(500).json({ error: 'Failed to register file in DynamoDB', details: ddbErr.message });
             }
+        } else {
+            console.log(`[UPLOAD DEBUG] File already registered in DynamoDB: user_id=${normalizedUserId}, file_id=${fileId}`);
         }
 
         // Respond with success
@@ -172,9 +255,19 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
 
         const results = [];
 
-        for (const file of files) {
-            const s3Key = `uploads/${uuidv4()}-${file.originalname}`;
-            const fileId = uuidv4();
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            // Accept file_id from frontend (array or single value)
+            let fileId = req.body.file_id;
+            if (Array.isArray(fileId)) {
+                fileId = fileId[i];
+            }
+            if (!fileId) {
+                // fallback for legacy clients
+                fileId = `${req.body.user_id || 'unknown'}_${file.originalname}`;
+                console.warn(`[PROCESS WARNING] No file_id provided by frontend, using fallback: ${fileId}`);
+            }
+            const s3Key = `uploads/${fileId}`;
 
             // Upload to S3
             await s3.upload({
@@ -195,6 +288,7 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             const fs = require('fs');
             const os = require('os');
             const pathTmp = require('path');
+            const supportedFiletypes = require('./supported_filetypes');
 
             // Generate a secure temp file path
             const tmpDir = os.tmpdir();
@@ -202,15 +296,37 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             fs.writeFileSync(tmpFilePath, file.buffer);
             console.log(`[PROCESS DEBUG] Saved temp file for parsing: ${tmpFilePath}`);
 
+            let pdfPath = tmpFilePath;
+            let tempPdfToDelete = null;
+            if (!isAudio && fileExt !== '.pdf' && supportedFiletypes.includes(fileExt)) {
+                // Convert to PDF using toPdf.py
+                const { spawnSync } = require('child_process');
+                const pdfOutputPath = pathTmp.join(tmpDir, `${fileId}.pdf`);
+                console.log(`[PROCESS DEBUG] Converting ${tmpFilePath} to PDF at ${pdfOutputPath}`);
+                const convertResult = spawnSync('python3', [
+                    path.join(__dirname, '..', '..', 'src', 'parsers', 'toPdf.py'),
+                    tmpFilePath,
+                    tmpDir
+                ], { encoding: 'utf-8' });
+                if (convertResult.status === 0 && fs.existsSync(pdfOutputPath)) {
+                    pdfPath = pdfOutputPath;
+                    tempPdfToDelete = pdfOutputPath;
+                    console.log(`[PROCESS DEBUG] File converted to PDF: ${pdfOutputPath}`);
+                } else {
+                    const errMsg = convertResult.stderr || (convertResult.stdout ? convertResult.stdout : 'Unknown error during PDF conversion');
+                    throw new Error(`[PROCESS ERROR] PDF conversion failed for ${tmpFilePath}: ${errMsg}`);
+                }
+            }
+
             let outputData = '';
             let errorData = '';
             let pythonProcess;
             // NOTE: No processed results are written to disk. All persistent storage is handled by ChromaDB and DynamoDB/S3.
             try {
-                // Run parser, passing the temp file path
+                // Run parser, passing the PDF temp file path (converted or original)
                 pythonProcess = spawn('python3', [
                     path.join(__dirname, '..', '..', 'src', 'parsers', parserScript),
-                    tmpFilePath
+                    pdfPath
                 ]);
 
                 pythonProcess.stdout.on('data', (data) => {
@@ -229,6 +345,14 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
                                 console.error('Failed to delete temp file:', tmpFilePath, err);
                             }
                         });
+                        // Clean up PDF conversion temp file if needed
+                        if (tempPdfToDelete) {
+                            fs.unlink(tempPdfToDelete, (err) => {
+                                if (err) {
+                                    console.error('Failed to delete temp PDF:', tempPdfToDelete, err);
+                                }
+                            });
+                        }
                         if (code === 0) {
                             try {
                                 const result = JSON.parse(outputData);
@@ -239,10 +363,9 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
                                 result.text = typeof result.text !== 'undefined' ? result.text : '';
                                 result.s3_key = s3Key;
                                 result.file_id = fileId; // Ensure file_id is always present
-                                let rawUserId = req.body.user_id || 'default_user';
-                                let userId = rawUserId.startsWith('user_') ? rawUserId.slice(5) : rawUserId;
-                                result.user_id = userId; // Always just Clerk user ID
-                                console.log(`[PROCESS DEBUG] Normalized user_id for file ${result.filename}:`, userId);
+                                let userId = req.body.user_id || 'default_user';
+                                result.user_id = userId; 
+                                console.log(`[PROCESS DEBUG] Used user_id for file ${result.filename}:`, userId);
                                 results.push(result);
                                 console.log(`[PROCESS DEBUG] Parsed file: ${result.filename}`);
                                 resolve();
@@ -261,31 +384,37 @@ app.post('/api/process', upload.array('files'), async (req, res) => {
             }
 
 
-            // Save result to DynamoDB
-            // Extract 'text' from the parser result (if present)
+            // Save result to DynamoDB (never store 'text' content)
             let parserResult = results[results.length - 1];
-            let text = '';
-            if (parserResult) {
-                if (typeof parserResult === 'object' && parserResult.text) {
-                    text = parserResult.text;
-                } else if (parserResult.result && parserResult.result.text) {
-                    text = parserResult.result.text;
-                }
-            }
-            await dynamodb.put({
+            // Check if file is already registered in DynamoDB before inserting
+            const existing = await dynamodb.get({
                 TableName: process.env.AWS_DYNAMODB_TABLE,
-                Item: {
-                    file_id: fileId,
-                    filename: file.originalname,
-                    s3_key: s3Key,
-                    class: className || '',
-                    topic: note || '',
-                    processed_date: new Date().toISOString(),
-                    result: parserResult,
-                    user_id: req.body.user_id || 'default_user',
-                    text: text // <-- Store text at top level for embedding
+                Key: {
+                    user_id: parserResult.user_id,
+                    file_id: parserResult.file_id
                 }
             }).promise();
+            if (!existing.Item) {
+                // Only store allowed metadata fields, never 'text' or 'result'
+                await dynamodb.put({
+                    TableName: process.env.AWS_DYNAMODB_TABLE,
+                    Item: {
+                        user_id: parserResult.user_id,
+                        file_id: parserResult.file_id,
+                        // Always store just the original filename (no user_id prefix)
+                        filename: file.originalname,
+                        s3_key: parserResult.s3_key,
+                        uploaded_at: new Date().toISOString(),
+                        class: (typeof parserResult.class !== 'undefined' && parserResult.class !== null && parserResult.class !== '') ? parserResult.class : (className || ''),
+                        topic: (typeof parserResult.topic !== 'undefined' && parserResult.topic !== null && parserResult.topic !== '') ? parserResult.topic : (note || ''),
+                        file_type: parserResult.file_type || '',
+                        num_pages: parserResult.num_pages || undefined
+                        // Do NOT include 'text' or 'result' fields here
+                    }
+                }).promise();
+            } else {
+                console.log(`[PROCESS DEBUG] File already registered in DynamoDB: user_id=${parserResult.user_id}, file_id=${parserResult.file_id}`);
+            }
         }
 
         // Run embedding process and send parsed results as JSON via stdin
@@ -347,7 +476,10 @@ app.post('/api/search', async (req, res) => {
 
         console.log(`[API/Search] Starting vector DB search for query:`, query, 'user_id:', user_id);
         // Build collection name for user-specific search
-        const collection = `user_${user_id}`;
+        let collection = user_id;
+        if (!collection.startsWith('user_')) {
+            collection = `user_${collection}`;
+        }
         const args = [
             path.join(__dirname, '..', '..', 'src', 'parsers', 'test_embeddings.py'),
             '--query', query,

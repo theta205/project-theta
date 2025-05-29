@@ -71,8 +71,14 @@ def prepare_chunks(parsed_data: List[Dict]) -> Dict[str, List[Dict]]:
 
 def save_to_chroma(user_chunks: Dict[str, List[Dict]]):
     """Save chunks to user-specific ChromaDB collections."""
+    def normalize_collection_name(user_id):
+        if user_id.startswith('user_'):
+            return user_id
+        return f'user_{user_id}'
+
     for user_id, chunks in user_chunks.items():
-        collection_name = f"user_{user_id}"
+        collection_name = normalize_collection_name(user_id)
+        print(f"[DEBUG] Normalized collection name: {collection_name}")
         print(f"[DEBUG] Processing collection: {collection_name}")
         print(f"[DEBUG] Preparing to upsert {len(chunks)} chunks for user {user_id}")
         # Get or create collection

@@ -32,6 +32,9 @@ try:
         sys.exit(1)
 
     def search_similar_chunks(query: str, collection_name: str = "documents", n_results: int = 5, topic: str = None) -> List[Dict]:
+        # Always prefix 'user_' for user collections, except for shared/other collections
+        if collection_name != "documents" and not collection_name.startswith('user_'):
+            collection_name = f'user_{collection_name}'
         debug_log(f"search_similar_chunks called with query='{query}', collection='{collection_name}', n_results={n_results}, topic={topic}")
         # [DEBUG] If embedding/uploading was performed here, log the collection:
         # debug_log(f"Uploading/embedding into ChromaDB collection: {collection_name}")

@@ -16,6 +16,7 @@
     "@testing-library/user-event": "^13.5.0",
     "autoprefixer": "^10.4.16",
     "axios": "^1.3.4",
+    "chromadb": "^2.4.6",
     "lucide-react": "^0.511.0",
     "postcss": "^8.4.38",
     "react": "^18.2.0",

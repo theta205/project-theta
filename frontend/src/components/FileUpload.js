@@ -91,9 +91,11 @@ const FileUpload = () => {
         alert("You must be signed in to upload files.");
         return;
       }
-      formData.append('className', className);
+      // Send correct field names for backend
+      formData.append('class', className);
       selectedFiles.forEach(file => {
-        formData.append(`topic_${file.name}`, fileTopics[file.name] || '');
+        formData.append('topic', fileTopics[file.name] || '');
+        formData.append('file_type', file.type || '');
       });
 
       try {
@@ -107,9 +109,10 @@ const FileUpload = () => {
         try {
           const processFormData = new FormData();
           // Attach each file and its file_id
-          selectedFiles.forEach(file => {
+          selectedFiles.forEach((file, idx) => {
             processFormData.append('files', file);
             processFormData.append('file_id', file.file_id);
+            console.log(`[FileUpload] Appending file #${idx}: name=${file.name}, file_id=${file.file_id}`);
           });
 
           // Attach user_id from Clerk
@@ -122,9 +125,11 @@ const FileUpload = () => {
             return;
           }
 
-          processFormData.append('className', className);
+          // Send correct field names for backend
+          processFormData.append('class', className);
           selectedFiles.forEach(file => {
-            processFormData.append(`topic_${file.name}`, fileTopics[file.name] || '');
+            processFormData.append('topic', fileTopics[file.name] || '');
+            processFormData.append('file_type', file.type || '');
           });
 
           // Debug: log formData contents

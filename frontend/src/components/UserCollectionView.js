@@ -12,12 +12,24 @@ const UserCollectionView = () => {
     const fetchChunks = async () => {
       setLoading(true);
       setError(null);
+      console.log('[UserCollectionView] Fetching collection:', collectionName);
+      const url = `/api/collection/${collectionName}`;
+      console.log('[UserCollectionView] Request URL:', url);
       try {
-        // Assume you have an endpoint like /api/collection/:collectionName
-        const res = await axios.get(`/api/collection/${collectionName}`);
+        const res = await axios.get(url);
+        console.log('[UserCollectionView] Response data:', res.data);
         setChunks(res.data.chunks || []);
       } catch (err) {
-        setError(err.response?.data?.error || err.message);
+        // Log the entire error object for debugging
+        console.error('[UserCollectionView] Error fetching collection:', err);
+        if (err.response) {
+          console.error('[UserCollectionView] Error response data:', err.response.data);
+        }
+        setError(
+          (err.response && err.response.data && err.response.data.error)
+            ? `${err.response.data.error} (status ${err.response.status})`
+            : err.message
+        );
       } finally {
         setLoading(false);
       }
