@@ -10,11 +10,11 @@ import { ScheduleContent } from "@/components/schedule-content"
 import { ChatContent } from "@/components/chat-content"
 import { SettingsContent } from "@/components/settings-content"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { ThemeProvider } from "next-themes"
+import { ThemeProvider } from "@/components/theme-provider"
 
 export type NavigationItem = "dashboard" | "courses" | "flashcards" | "schedule" | "chat" | "settings"
 
-export default function ProjectThetaDashboard() {
+export default function DashboardPage() {
   const [currentPage, setCurrentPage] = useState<NavigationItem>("dashboard")
 
   const renderContent = () => {

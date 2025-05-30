@@ -1,1 +1,0 @@
-This folder will contain migrated components from the Create React App (CRA) version of Project Theta. Please copy components from ../frontend/src/components here, adjusting imports and file extensions as needed for Next.js and TypeScript.
