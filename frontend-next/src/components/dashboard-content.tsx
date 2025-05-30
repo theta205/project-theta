@@ -1,19 +1,16 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  BookOpen,
-  Brain,
-  Calendar,
-  MessageSquare,
-  Upload,
-  FolderSyncIcon as Sync,
-  Clock,
-  PlayCircle,
-  FileText,
-  Zap,
-} from "lucide-react"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
+import { Search, Filter, Calendar, Clock, BookOpen, FileText, MessageSquare, Upload, Brain, PlayCircle, Zap } from "lucide-react"
 
 export function DashboardContent() {
   const courses = [
@@ -185,10 +182,6 @@ export function DashboardContent() {
             <CardTitle className="text-lg">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3">
-            <Button className="h-16 flex-col gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600">
-              <Sync className="h-5 w-5" />
-              <span className="text-xs">Sync Canvas</span>
-            </Button>
             <Button className="h-16 flex-col gap-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600">
               <Upload className="h-5 w-5" />
               <span className="text-xs">Upload Lecture</span>
@@ -246,6 +239,8 @@ export function DashboardContent() {
           </CardContent>
         </Card>
       </div>
+      
+
     </div>
   )
 }

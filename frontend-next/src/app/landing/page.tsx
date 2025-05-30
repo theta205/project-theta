@@ -5,6 +5,8 @@ import { useRef, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { SignInButton } from "@clerk/nextjs"
+import ClerkDashboardButton from "@/components/ClerkDashboardButton"
 import {
   GraduationCap,
   Upload,
@@ -24,6 +26,24 @@ import {
   Target,
   BarChart3,
 } from "lucide-react"
+
+import ClerkSignInButtonTest from "./ClerkSignInButtonTest";
+
+// function ClerkSignInButton() {
+//   return (
+//     <SignInButton afterSignInUrl="/dashboard" asChild>
+//       <Button
+//         size="lg"
+//         className="text-lg px-8 py-4 bg-gradient-to-r from-violet-500 to-cyan-500 hover:from-violet-600 hover:to-cyan-600 shadow-lg hover:shadow-violet-500/25 transition-all duration-300"
+//       >
+//         <Sparkles className="mr-2 h-5 w-5" />
+//         Create Your Assistant
+//         <ArrowRight className="ml-2 h-5 w-5" />
+//       </Button>
+//     </SignInButton>
+//   );
+// }
+
 
 export default function LandingPage() {
   const { scrollYProgress } = useScroll()
@@ -168,15 +188,9 @@ export default function LandingPage() {
             transition={{ duration: 1, delay: 0.7 }}
           >
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                size="lg"
-                className="text-lg px-8 py-4 bg-gradient-to-r from-violet-500 to-cyan-500 hover:from-violet-600 hover:to-cyan-600 shadow-lg hover:shadow-violet-500/25 transition-all duration-300"
-              >
-                <Sparkles className="mr-2 h-5 w-5" />
-                Create Your Assistant
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              <ClerkSignInButtonTest />
             </motion.div>
+
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
                 size="lg"

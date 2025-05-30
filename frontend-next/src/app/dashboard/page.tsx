@@ -6,7 +6,7 @@ import { TopNavigation } from "@/components/top-navigation"
 import { DashboardContent } from "@/components/dashboard-content"
 import { CoursesContent } from "@/components/courses-content"
 import { FlashcardsContent } from "@/components/flashcards-content"
-import { ScheduleContent } from "@/components/schedule-content"
+import ScheduleContent from "@/components/schedule-content"
 import { ChatContent } from "@/components/chat-content"
 import { SettingsContent } from "@/components/settings-content"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
@@ -14,8 +14,20 @@ import { ThemeProvider } from "@/components/theme-provider"
 
 export type NavigationItem = "dashboard" | "courses" | "flashcards" | "schedule" | "chat" | "settings"
 
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function DashboardPage() {
-  const [currentPage, setCurrentPage] = useState<NavigationItem>("dashboard")
+  const [currentPage, setCurrentPage] = useState<NavigationItem>("dashboard");
+  const { isSignedIn, isLoaded } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.replace("/");
+    }
+  }, [isLoaded, isSignedIn, router]);
 
   const renderContent = () => {
     switch (currentPage) {

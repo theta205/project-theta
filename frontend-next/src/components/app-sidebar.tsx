@@ -10,7 +10,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import type { NavigationItem } from "@/app/page"
+import { NavigationItem } from "@/app/dashboard/page"
 
 const navigationItems = [
   {

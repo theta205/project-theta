@@ -1,17 +1,18 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, BookOpen, Clock, FileText, Brain, MessageSquare, Calendar, Plus } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"
+import { Search, Filter, BookOpen, Clock, FileText, Brain, MessageSquare, Calendar, Plus, File, X } from "lucide-react"
 
 export function CoursesContent() {
-  const courses = [
+  const [courses, setCourses] = useState([
     {
       code: "ECON210",
       title: "Microeconomics",
-      instructor: "Dr. Sarah Johnson",
-      credits: 3,
       progress: 75,
       lectures: 24,
       flashcards: 156,
@@ -20,10 +21,8 @@ export function CoursesContent() {
       status: "active",
     },
     {
-      code: "BIO301",
+      code: "",
       title: "Cell Biology",
-      instructor: "Prof. Michael Chen",
-      credits: 4,
       progress: 60,
       lectures: 18,
       flashcards: 203,
@@ -34,8 +33,6 @@ export function CoursesContent() {
     {
       code: "MATH102",
       title: "Calculus II",
-      instructor: "Dr. Emily Rodriguez",
-      credits: 4,
       progress: 85,
       lectures: 32,
       flashcards: 89,
@@ -46,8 +43,6 @@ export function CoursesContent() {
     {
       code: "HIST205",
       title: "Modern European History",
-      instructor: "Prof. David Wilson",
-      credits: 3,
       progress: 45,
       lectures: 16,
       flashcards: 67,
@@ -58,8 +53,6 @@ export function CoursesContent() {
     {
       code: "PHYS101",
       title: "Introduction to Physics",
-      instructor: "Dr. Lisa Park",
-      credits: 4,
       progress: 100,
       lectures: 28,
       flashcards: 145,
@@ -67,7 +60,47 @@ export function CoursesContent() {
       color: "from-gray-500 to-slate-500",
       status: "completed",
     },
-  ]
+  ])
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [newCourse, setNewCourse] = useState({
+    title: "",
+    code: "",
+    progress: 0,
+    lectures: 0,
+    flashcards: 0,
+    assignments: 0,
+    color: "from-blue-500 to-cyan-500",
+    status: "active"
+  })
+
+  const handleAddCourse = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newCourse.title.trim()) return
+    
+    setCourses([
+      ...courses,
+      {
+        ...newCourse,
+        title: newCourse.title.trim(),
+        code: newCourse.code.trim()
+      }
+    ])
+    
+    // Reset form
+    setNewCourse({
+      title: "",
+      code: "",
+      progress: 0,
+      lectures: 0,
+      flashcards: 0,
+      assignments: 0,
+      color: "from-blue-500 to-cyan-500",
+      status: "active"
+    })
+    
+    setIsDialogOpen(false)
+  }
 
   return (
     <div className="space-y-6">
@@ -77,10 +110,55 @@ export function CoursesContent() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Courses</h1>
           <p className="text-muted-foreground">Manage your enrolled courses and track progress</p>
         </div>
-        <Button className="bg-gradient-to-r from-violet-500 to-cyan-500 hover:from-violet-600 hover:to-cyan-600">
-          <Plus className="mr-2 h-4 w-4" />
-          Add Course
-        </Button>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-gradient-to-r from-violet-500 to-cyan-500 hover:from-violet-600 hover:to-cyan-600">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Course
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Course</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleAddCourse} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Course Name *</Label>
+                <Input
+                  id="title"
+                  value={newCourse.title}
+                  onChange={(e) => setNewCourse({...newCourse, title: e.target.value})}
+                  placeholder="e.g. Introduction to Computer Science"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="code">Course Code (Optional)</Label>
+                <Input
+                  id="code"
+                  value={newCourse.code}
+                  onChange={(e) => setNewCourse({...newCourse, code: e.target.value})}
+                  placeholder="e.g. CS101"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setIsDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-gradient-to-r from-violet-500 to-cyan-500 hover:from-violet-600 hover:to-cyan-600"
+                >
+                  Add Course
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Search and Filters */}
@@ -102,79 +180,27 @@ export function CoursesContent() {
         </CardContent>
       </Card>
 
-      {/* Course Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-violet-200/50 dark:border-gray-800">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 flex items-center justify-center">
-                <BookOpen className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">5</p>
-                <p className="text-sm text-muted-foreground">Total Courses</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-violet-200/50 dark:border-gray-800">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">4</p>
-                <p className="text-sm text-muted-foreground">Active</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-violet-200/50 dark:border-gray-800">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-r from-purple-500 to-violet-500 flex items-center justify-center">
-                <Brain className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">660</p>
-                <p className="text-sm text-muted-foreground">Flashcards</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-violet-200/50 dark:border-gray-800">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">40</p>
-                <p className="text-sm text-muted-foreground">Assignments</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Courses Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {courses.map((course) => (
           <Card
-            key={course.code}
+            key={`${course.code}-${course.title}`}
             className="hover:shadow-lg transition-all duration-200 border-violet-200/50 dark:border-gray-800"
           >
             <CardHeader className="pb-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <CardTitle className="text-xl">{course.code}</CardTitle>
-                    <Badge variant={course.status === "completed" ? "secondary" : "default"}>{course.status}</Badge>
+                    <CardTitle className="text-xl">{course.title}</CardTitle>
+                    <Badge variant={course.status === "completed" ? "secondary" : "default"}>
+                      {course.status}
+                    </Badge>
                   </div>
-                  <p className="text-base font-medium text-gray-700 dark:text-gray-300">{course.title}</p>
-                  <p className="text-sm text-muted-foreground">{course.instructor}</p>
-                  <p className="text-xs text-muted-foreground">{course.credits} credits</p>
+                  {course.code && (
+                    <p className="text-base font-medium text-gray-700 dark:text-gray-300">
+                      {course.code}
+                    </p>
+                  )}
                 </div>
                 <div className={`h-4 w-4 rounded-full bg-gradient-to-r ${course.color}`} />
               </div>
@@ -219,6 +245,10 @@ export function CoursesContent() {
                 <Button size="sm" variant="outline" className="flex-1 gap-1">
                   <Calendar className="h-3 w-3" />
                   Schedule
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1 gap-1">
+                  <File className="h-3 w-3" />
+                  Files
                 </Button>
               </div>
             </CardContent>

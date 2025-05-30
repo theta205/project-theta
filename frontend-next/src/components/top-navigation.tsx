@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useTheme } from "next-themes"
-import type { NavigationItem } from "@/app/page"
+import type { NavigationItem } from "@/types/navigation"
 
 const pageNames = {
   dashboard: "Dashboard",
@@ -22,14 +22,21 @@ const pageNames = {
   schedule: "Smart Schedule",
   chat: "Agent Chat",
   settings: "Settings",
-}
+} as const;
+
+type PageName = keyof typeof pageNames;
 
 interface TopNavigationProps {
-  currentPage: NavigationItem
+  currentPage: PageName;
 }
 
+import { useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+
 export function TopNavigation({ currentPage }: TopNavigationProps) {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme } = useTheme();
+  const { signOut } = useClerk();
+  const router = useRouter();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-violet-200/50 bg-white/80 backdrop-blur-md dark:border-gray-800 dark:bg-gray-950/80">
@@ -103,7 +110,15 @@ export function TopNavigation({ currentPage }: TopNavigationProps) {
                 Toggle Theme
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">Logout</DropdownMenuItem>
+              <DropdownMenuItem
+  className="text-red-600"
+  onClick={async () => {
+    await signOut();
+    router.push("/");
+  }}
+>
+  Logout
+</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

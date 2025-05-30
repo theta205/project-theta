@@ -1,0 +1,450 @@
+"use client"
+
+import React, { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Upload,
+  Zap,
+  BookOpen,
+  Brain,
+  FileText,
+  Users,
+} from "lucide-react"
+
+interface ScheduleEvent {
+  id: number
+  title: string
+  type: string
+  time: string
+  duration: string
+  course: string
+  day: number
+  color: string
+  description?: string
+}
+
+interface EventItemProps {
+  event: ScheduleEvent
+}
+
+// Helper function to generate random gradients
+const getRandomGradient = (): string => {
+  const gradients = [
+    'from-blue-500 to-cyan-500',
+    'from-green-500 to-emerald-500',
+    'from-purple-500 to-violet-500',
+    'from-orange-500 to-red-500',
+    'from-pink-500 to-rose-500',
+    'from-yellow-500 to-amber-500',
+  ]
+  return gradients[Math.floor(Math.random() * gradients.length)]
+}
+
+// Define icon components with proper types
+const EventIcons = {
+  lecture: BookOpen,
+  class: BookOpen,
+  study: Brain,
+  review: Brain,
+  assignment: FileText,
+  homework: FileText,
+  due: FileText,
+  exam: FileText,
+  quiz: FileText,
+  test: FileText,
+  meeting: Users,
+  group: Users,
+  default: Clock
+} as const
+
+type EventIconType = keyof typeof EventIcons
+
+const EventItem = ({ event }: EventItemProps) => {
+  const IconComponent = EventIcons[event.type as EventIconType] || EventIcons.default;
+  const isAllDay = event.time === 'All Day' || event.time === '';
+  
+  // Format time for display (e.g., "9:00 AM - 10:30 AM")
+  const formatTimeDisplay = (timeStr: string) => {
+    if (isAllDay) return 'All Day'
+    
+    // If the time includes a dash, it's already a range
+    if (timeStr.includes('-')) {
+      return timeStr
+    }
+    
+    // If we have duration, show both start time and end time
+    if (event.duration) {
+      return `${timeStr} - ${event.duration}`
+    }
+    
+    return timeStr || 'All Day'
+  }
+
+  return (
+    <div
+      className={`p-3 rounded-lg text-white text-sm mb-2 bg-gradient-to-r ${event.color} hover:opacity-90 transition-colors shadow-sm cursor-pointer`}
+    >
+      <div className="flex flex-col h-full">
+        {/* Time and title row */}
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="font-medium text-sm truncate flex-1">
+            {event.title}
+          </h4>
+          <span className="text-xs bg-white/20 px-2 py-0.5 rounded ml-2 whitespace-nowrap">
+            {formatTimeDisplay(event.time)}
+          </span>
+        </div>
+
+        {/* Course and icon row */}
+        <div className="flex items-center justify-between mt-1">
+          {event.course ? (
+            <span className="text-xs opacity-90 bg-white/10 px-2 py-0.5 rounded">
+              {event.course}
+            </span>
+          ) : (
+            <div />
+          )}
+          <div className="bg-white/20 p-1 rounded-md">
+            <IconComponent className="h-3.5 w-3.5 text-white/90" />
+          </div>
+        </div>
+
+        {/* Description (if any) */}
+        {event.description && (
+          <p className="mt-2 text-xs opacity-80 line-clamp-2">
+            {event.description}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function ScheduleContent() {
+  const [currentView, setCurrentView] = useState<"week" | "month">("week")
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [isImporting, setIsImporting] = useState(false)
+  const [icalUrl, setIcalUrl] = useState("")
+  const [showUrlInput, setShowUrlInput] = useState(false)
+  const [scheduleEvents, setScheduleEvents] = useState<ScheduleEvent[]>([])
+
+  // Format month and year
+  const formatMonthYear = (date: Date) => {
+    return date.toLocaleString('default', { month: 'long', year: 'numeric' })
+  }
+
+  // Generate current week dates
+  const getCurrentWeek = () => {
+    const now = new Date()
+    const currentDay = now.getDay()
+    const currentDate = now.getDate()
+    
+    return Array.from({ length: 7 }).map((_, i) => {
+      const date = new Date(now)
+      // Adjust to start the week from Monday (0 = Sunday, 1 = Monday, etc.)
+      const dayOffset = i - (currentDay === 0 ? 6 : currentDay - 1) // Convert Sunday from 0 to 6
+      date.setDate(currentDate + dayOffset)
+      
+      return {
+        date: date.getDate(),
+        day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()],
+        isToday: date.getDate() === now.getDate() && date.getMonth() === now.getMonth(),
+        dateObj: date,
+        isCurrentMonth: date.getMonth() === now.getMonth()
+      }
+    })
+  }
+
+  // Parse iCal data
+  const parseICal = (data: string) => {
+    try {
+      console.log('Parsing iCal data...')
+      // @ts-ignore - ical.js will be loaded from CDN
+      const jcalData = ICAL.parse(data)
+      const comp = new ICAL.Component(jcalData)
+      const vevents = comp.getAllSubcomponents('vevent')
+      
+      return vevents.map((vevent: any) => {
+        const event = new ICAL.Event(vevent)
+        return {
+          summary: event.summary,
+          start: event.startDate.toString(),
+          end: event.endDate.toString(),
+          description: event.description,
+          location: event.location,
+          categories: event.categories || []
+        }
+      })
+    } catch (error) {
+      console.error('Error parsing iCal data:', error)
+      throw error
+    }
+  }
+
+  // Fetch iCal data from URL
+  const fetchICalData = async (url: string) => {
+    if (!url) return
+    
+    setIsImporting(true)
+    
+    try {
+      const response = await fetch('/api/fetch-ical', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch iCal data')
+      }
+      
+      const data = await response.json()
+      const events = parseICal(data.data)
+      
+      // Process events and update state
+      const newEvents = events.map((event: any, index: number) => {
+        const startDate = new Date(event.start)
+        const endDate = new Date(event.end)
+        const dayOfWeek = startDate.getDay()
+        const calendarDayIndex = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+        
+        return {
+          id: Date.now() + index,
+          title: event.summary || 'Imported Event',
+          type: event.categories?.[0]?.toLowerCase() || 'lecture',
+          time: formatTime(startDate),
+          duration: calculateDuration(startDate, endDate),
+          course: event.categories?.[0] || 'Imported',
+          day: calendarDayIndex,
+          color: getRandomGradient(),
+          description: event.description || ''
+        }
+      })
+      
+      setScheduleEvents(prev => [...prev, ...newEvents])
+      setIcalUrl('')
+      setShowUrlInput(false)
+      
+    } catch (error) {
+      console.error('Error importing calendar:', error)
+      alert('Failed to import calendar. Please check the URL and try again.')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  // Format time to string
+  const formatTime = (date: Date | null | undefined): string => {
+    if (!date) return 'All Day'
+    
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      }).format(date)
+    } catch (error) {
+      console.error('Error formatting time:', error)
+      return 'Error'
+    }
+  }
+
+  // Calculate duration between two dates
+  const calculateDuration = (start: Date | null | undefined, end: Date | null | undefined): string => {
+    try {
+      if (!start || !end) return ''
+      
+      const diffMs = end.getTime() - start.getTime()
+      const diffMins = Math.round(diffMs / 60000)
+      
+      if (diffMins < 60) {
+        return `${diffMins}m`
+      }
+      
+      const hours = Math.floor(diffMins / 60)
+      const mins = diffMins % 60
+      
+      return mins ? `${hours}h ${mins}m` : `${hours}h`
+    } catch (error) {
+      console.error('Error calculating duration:', error)
+      return ''
+    }
+  }
+
+  // Handle iCal URL input change
+  const handleIcalUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIcalUrl(e.target.value)
+  }
+
+  // Handle form submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (icalUrl) {
+      fetchICalData(icalUrl)
+    }
+  }
+
+  // Load ical.js from CDN
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ical.js/1.4.0/ical.min.js'
+    script.async = true
+    script.onload = () => {
+      // @ts-ignore
+      window.ICAL = ICAL
+    }
+    document.body.appendChild(script)
+
+    return () => {
+      document.body.removeChild(script)
+    }
+  }, [])
+
+  const currentWeek = getCurrentWeek()
+
+  return (
+    <div className="space-y-6 p-4 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Smart Schedule</h1>
+          <p className="text-muted-foreground">AI-powered study planning and time management</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2">
+            <Zap className="h-4 w-4" />
+            AI Optimize
+          </Button>
+          <Button onClick={() => setShowUrlInput(!showUrlInput)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import Calendar
+          </Button>
+        </div>
+      </div>
+
+      {/* iCal URL Input */}
+      {showUrlInput && (
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <Input
+            type="text"
+            placeholder="Enter iCal URL"
+            value={icalUrl}
+            onChange={handleIcalUrlChange}
+            className="flex-1"
+            required
+          />
+          <Button 
+            type="submit"
+            disabled={isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Import'}
+          </Button>
+        </form>
+      )}
+
+      {/* Calendar View Toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              const newDate = new Date(currentDate)
+              newDate.setDate(currentDate.getDate() - 7)
+              setCurrentDate(newDate)
+            }}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <h2 className="text-lg font-semibold">
+            {formatMonthYear(currentDate)}
+          </h2>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => {
+              const newDate = new Date(currentDate)
+              newDate.setDate(currentDate.getDate() + 7)
+              setCurrentDate(newDate)
+            }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant={currentView === 'week' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setCurrentView('week')}
+          >
+            Week
+          </Button>
+          <Button
+            variant={currentView === 'month' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setCurrentView('month')}
+          >
+            Month
+          </Button>
+        </div>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-2">
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+          <div key={day} className="text-center font-medium text-sm py-2">
+            {day}
+          </div>
+        ))}
+        
+        {currentWeek.map((day, index) => (
+          <div 
+            key={index} 
+            className={`min-h-32 p-2 border rounded-lg ${
+              day.isToday ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-border'
+            }`}
+          >
+            <div className="flex justify-between items-center mb-1">
+              <span className={`text-sm font-medium ${
+                day.isToday 
+                  ? 'bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center'
+                  : ''
+              }`}>
+                {day.date}
+              </span>
+              {!day.isCurrentMonth && (
+                <span className="text-xs text-muted-foreground">
+                  {day.dateObj.toLocaleString('default', { month: 'short' })}
+                </span>
+              )}
+            </div>
+            
+            {/* Events for this day */}
+            <div className="space-y-1 mt-1">
+              {scheduleEvents
+                .filter(event => event.day === index)
+                .map((event) => (
+                  <EventItem key={event.id} event={event} />
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      
+      {/* Add Event Button */}
+      <div className="fixed bottom-6 right-6">
+        <Button size="lg" className="rounded-full w-14 h-14 p-0">
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
+    </div>
+  )
+}
