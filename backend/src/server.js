@@ -1,28 +1,30 @@
 const express = require('express');
 const session = require('express-session');
 const axios = require('axios');
-require('dotenv').config();
-const multer = require('multer');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+const multer = require('multer');
 const { spawn } = require('child_process');
 const cors = require('cors');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+
+// Import webhook routes
+const webhookRoutes = require('./routes/webhooks');
 
 // Configure AWS
 AWS.config.update({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION
+  region: process.env.AWS_REGION || 'us-east-2',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 });
 
-// Log AWS configuration (without sensitive data)
 console.log('AWS Configuration:');
 console.log('Region:', process.env.AWS_REGION);
 console.log('S3 Bucket:', process.env.AWS_S3_BUCKET);
-console.log('DynamoDB Table:', process.env.AWS_DYNAMODB_TABLE);
+console.log('DynamoDB Table Files:', process.env.AWS_DYNAMODB_TABLE_FILES);
+console.log('DynamoDB Table User:', process.env.AWS_DYNAMODB_TABLE_USER);
 
 const s3 = new AWS.S3();
 const dynamodb = new AWS.DynamoDB.DocumentClient();
@@ -38,97 +40,36 @@ app.use(session({
 }));
 const port = 5001;
 
-// Enable CORS
-app.use(cors({
+// Enable CORS for non-webhook routes
+const corsOptions = {
     origin: ['http://localhost:3000', 'http://localhost:8080'],
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type']
-}));
+};
+app.use(cors(corsOptions));
 
-// Parse JSON bodies
+// Webhook routes with JSON body parsing for ngrok testing
+app.use('/webhooks',
+    // 1️⃣ Enable CORS for ngrok
+    cors({
+        origin: '*', // Allow all origins for testing
+        methods: ['POST'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    }),
+    // 2️⃣ Logging
+    (req, res, next) => {
+        console.log(`[${new Date().toISOString()}] Incoming ${req.method} request to ${req.originalUrl}`);
+        next();
+    },
+    // 3️⃣ JSON body parsing
+    express.json(),
+    // 4️⃣ Webhook routes
+    webhookRoutes
+);
+
+// JSON body parser for all other routes
 app.use(express.json());
-
-/**
- * Canvas OAuth 2.0 endpoints
- *
- * Required .env variables:
- *  CANVAS_CLIENT_ID=your_canvas_client_id
- *  CANVAS_CLIENT_SECRET=your_canvas_client_secret
- *  CANVAS_REDIRECT_URI=http://localhost:3001/api/canvas/callback
- *  CANVAS_BASE_URL=https://canvas.instructure.com (or your institution's Canvas URL)
- *  SESSION_SECRET=your_session_secret
- *
- * To set up:
- * 1. Create a Canvas developer key at https://canvas.instructure.com/doc/api/file.developer_keys.html
- * 2. Set redirect URI to your backend's /api/canvas/callback
- * 3. Add the above variables to your .env file
- */
-
-const CANVAS_CLIENT_ID = process.env.CANVAS_CLIENT_ID;
-const CANVAS_CLIENT_SECRET = process.env.CANVAS_CLIENT_SECRET;
-const CANVAS_REDIRECT_URI = process.env.CANVAS_REDIRECT_URI;
-const CANVAS_BASE_URL = process.env.CANVAS_BASE_URL || 'https://canvas.instructure.com';
-
-// Step 1: Redirect user to Canvas OAuth login
-app.get('/api/canvas/login', (req, res) => {
-  const params = new URLSearchParams({
-    client_id: CANVAS_CLIENT_ID,
-    response_type: 'code',
-    redirect_uri: CANVAS_REDIRECT_URI,
-    scope: 'url:GET|/api/v1/courses url:GET|/api/v1/courses/:id/assignments',
-    state: 'somerandomstate' // Optionally use for CSRF protection
-  });
-  res.redirect(`${CANVAS_BASE_URL}/login/oauth2/auth?${params.toString()}`);
-});
-
-// Step 2: Handle OAuth callback, exchange code for access token
-app.get('/api/canvas/callback', async (req, res) => {
-  const { code } = req.query;
-  if (!code) return res.status(400).send('Missing code');
-  try {
-    const tokenRes = await axios.post(`${CANVAS_BASE_URL}/login/oauth2/token`, new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: CANVAS_CLIENT_ID,
-      client_secret: CANVAS_CLIENT_SECRET,
-      redirect_uri: CANVAS_REDIRECT_URI,
-      code
-    }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-    req.session.canvasToken = tokenRes.data.access_token;
-    res.redirect('/'); // Redirect to frontend root after login
-  } catch (err) {
-    res.status(500).send('OAuth error: ' + err.message);
-  }
-});
-
-// Middleware to check Canvas auth
-function requireCanvasAuth(req, res, next) {
-  if (!req.session.canvasToken) return res.status(401).json({ error: 'Not authenticated with Canvas' });
-  next();
-}
-
-// Step 3: Proxy Canvas API requests securely
-app.get('/api/canvas/courses', requireCanvasAuth, async (req, res) => {
-  try {
-    const apiRes = await axios.get(`${CANVAS_BASE_URL}/api/v1/courses`, {
-      headers: { Authorization: `Bearer ${req.session.canvasToken}` }
-    });
-    res.json(apiRes.data);
-  } catch (err) {
-    res.status(500).json({ error: err.response?.data || err.message });
-  }
-});
-
-app.get('/api/canvas/courses/:courseId/assignments', requireCanvasAuth, async (req, res) => {
-  try {
-    const { courseId } = req.params;
-    const apiRes = await axios.get(`${CANVAS_BASE_URL}/api/v1/courses/${courseId}/assignments`, {
-      headers: { Authorization: `Bearer ${req.session.canvasToken}` }
-    });
-    res.json(apiRes.data);
-  } catch (err) {
-    res.status(500).json({ error: err.response?.data || err.message });
-  }
-});
+app.use(express.urlencoded({ extended: true }));
 
 // Configure multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
