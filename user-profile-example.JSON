@@ -1,0 +1,61 @@
+{
+  "userProfile": {
+    "basicInfo": {
+      "userId": "unique_user_identifier",
+      "username": "user123",
+      "firstName": "John",
+      "lastName": "Doe",
+      "avatarUrl": "https://example.com/avatars/johndoe.jpg",
+      "joinedDate": "2025-01-15T00:00:00Z"
+    },
+    "preferences": {
+      "theme": "dark",
+      "language": "en-US",
+      "timezone": "America/New_York",
+      "notifications": {
+        "email": false,
+        "push": false,
+        "frequency": "daily"
+      }
+    },
+    "activity": {
+      "lastActive": "2025-05-30T17:30:00Z",
+      "status": "active",
+      "streakDays": 42,
+      "loginCount": 12
+    },
+    "education": {
+      "level": "high_school",
+      "institution": "Example High School",
+      "expectedGraduationYear": 2026,
+      "fieldOfInterest": "Computer Science",
+      "degreePursuing": null,
+      "highestDegreeEarned": null,
+      "yearEarned": null
+    },
+    "interests": [
+      "machine learning",
+      "web development",
+      "data science"
+    ],
+    "stats": {
+      "documentsUploaded": 15,
+      "notesTaken": 47,
+      "sessionsCompleted": 156
+    },
+    "metadata": {
+      "accountType": "free",
+      "createdAt": "2025-01-15T00:00:00Z",
+      "updatedAt": "2025-05-30T17:30:00Z"
+    }
+  },
+  "classCount": 1,
+  "classes": [
+    {
+      "className": "Mathematics 101",
+      "classCode": "MATH101",
+      "createdAt": "2025-01-15T00:00:00Z",
+      "updatedAt": "2025-05-30T17:30:00Z"
+    }
+  ]
+}
